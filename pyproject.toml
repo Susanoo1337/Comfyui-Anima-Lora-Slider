@@ -1,0 +1,12 @@
+[project]
+name = "comfyui-anima-lora-slider"
+version = "1.0.0"
+description = "Stack any number of LoRAs in ComfyUI, each with its own configurable slider (min, max, step and end labels)."
+readme = "README.md"
+requires-python = ">=3.9"
+
+[project.urls]
+Repository = "https://github.com/susanoo1337/comfyui-anima-lora-slider"
+
+[tool.comfy]
+DisplayName = "Anima LoRA Slider Stack"
