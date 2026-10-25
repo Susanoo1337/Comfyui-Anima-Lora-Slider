@@ -8,7 +8,9 @@ const STACK_WIDGET = "lora_stack";
 const DEFAULT_ROW = {
     on: true,
     lora: null,
+    title: "",       // shown instead of the LoRA path when set
     strength: 1,
+    random: false,   // roll a new strength for every queued generation
     min: -2,
     max: 2,
     step: 0.05,
@@ -29,7 +31,8 @@ const H = {
     configLine: 24,
     add: 26,
 };
-const CONFIG_H = H.configLine * 2 + H.rowGap;
+const CONFIG_LINES = 3;
+const CONFIG_H = H.configLine * CONFIG_LINES + H.rowGap * (CONFIG_LINES - 1);
 // The frontend insets DOM widgets by this much on every side, taking it out of their height.
 const WIDGET_MARGIN = 10;
 const MIN_NODE_WIDTH = 400;
@@ -45,6 +48,7 @@ if (!document.getElementById(STYLE_ID)) {
         .als-root {
             --als-accent: #5ac8ff;
             --als-track: #303040;
+            --als-roll: #ffb45a;
             --als-text: var(--input-text, #ddd);
             --als-muted: var(--descrip-text, #999);
             --als-bg: var(--comfy-input-bg, #222);
@@ -115,7 +119,8 @@ if (!document.getElementById(STYLE_ID)) {
             text-overflow: ellipsis;
         }
         .als-name.als-none { color: var(--als-muted); font-style: italic; }
-        .als-root button.als-gear.als-active { border-color: var(--als-accent); color: var(--als-accent); }
+        .als-root button.als-active { border-color: var(--als-accent); color: var(--als-accent); }
+        .als-root button.als-dice.als-active { border-color: var(--als-roll); color: var(--als-roll); }
 
         /* on/off switch */
         .als-switch {
@@ -176,6 +181,8 @@ if (!document.getElementById(STYLE_ID)) {
         }
         .als-value:hover { background: rgba(90, 190, 255, 0.12); }
         .als-row.als-zero .als-value { color: var(--als-muted); text-shadow: none; }
+        .als-row.als-random .als-value { color: var(--als-roll); text-shadow: 0 0 8px rgba(255, 180, 90, 0.55); }
+        .als-row.als-random .als-range { --als-accent: var(--als-roll); }
         .als-row.als-zero .als-name { text-decoration: line-through; }
         input.als-value-edit {
             cursor: text;
@@ -234,7 +241,7 @@ if (!document.getElementById(STYLE_ID)) {
         .als-config {
             height: ${CONFIG_H}px;
             display: grid;
-            grid-template-rows: repeat(2, ${H.configLine}px);
+            grid-template-rows: repeat(${CONFIG_LINES}, ${H.configLine}px);
             row-gap: ${H.rowGap}px;
             padding-top: 0;
         }
@@ -341,10 +348,22 @@ function snap(v, row) {
     return clamp(parseFloat(snapped.toFixed(10)), row.min, row.max);
 }
 
+// A random strength on the same grid the slider snaps to (see `snap`), min and max included.
+function rollStrength(row) {
+    const base = row.min <= 0 && row.max >= 0 ? 0 : row.min;
+    const kMin = Math.ceil((row.min - base) / row.step - 1e-9);
+    const kMax = Math.floor((row.max - base) / row.step + 1e-9);
+    if (kMax < kMin) return clamp(base, row.min, row.max);
+    const k = kMin + Math.floor(Math.random() * (kMax - kMin + 1));
+    return clamp(parseFloat((base + k * row.step).toFixed(10)), row.min, row.max);
+}
+
 function normalizeRow(raw) {
     const row = { ...DEFAULT_ROW, ...(raw && typeof raw === "object" ? raw : {}) };
     row.on = row.on !== false;
     row.lora = typeof row.lora === "string" && row.lora ? row.lora : null;
+    row.title = row.title == null ? "" : String(row.title);
+    row.random = row.random === true;
     row.min = num(row.min, DEFAULT_ROW.min);
     row.max = num(row.max, DEFAULT_ROW.max);
     if (row.min > row.max) [row.min, row.max] = [row.max, row.min];
@@ -535,12 +554,13 @@ function createStack(node) {
         const top = el("div", "als-top");
         const sw = el("div", "als-switch", { title: "Enable / disable this LoRA" });
         const name = el("button", "als-name");
-        const gear = el("button", "als-gear", { textContent: "⚙", title: "Configure slider" });
+        const dice = el("button", "als-dice", { textContent: "🎲" });
+        const gear = el("button", "als-gear", { textContent: "⚙", title: "Configure title and slider" });
         const up = el("button", "", { textContent: "▲", title: "Move up", disabled: index === 0 });
         const down = el("button", "", { textContent: "▼", title: "Move down", disabled: index === rows.length - 1 });
         const del = el("button", "", { textContent: "✕", title: "Remove" });
         gear.classList.toggle("als-active", open);
-        top.append(sw, name, gear, up, down, del);
+        top.append(sw, name, dice, gear, up, down, del);
 
         // — slider line: min label, range, max label, value —
         const line = el("div", "als-slider-line");
@@ -555,12 +575,18 @@ function createStack(node) {
             const dec = decimalsOf(row.step);
             rowEl.classList.toggle("als-off", !row.on);
             rowEl.classList.toggle("als-zero", row.strength === 0);
+            rowEl.classList.toggle("als-random", row.random);
             rowEl.title = row.strength === 0 ? "Strength is 0 — this LoRA will not be loaded" : "";
             sw.classList.toggle("als-on", row.on);
 
-            name.textContent = row.lora ?? "Click to choose a LoRA";
-            name.title = row.lora ?? "";
+            name.textContent = row.lora ? row.title || row.lora : "Click to choose a LoRA";
+            name.title = row.lora && row.title ? `${row.title} — ${row.lora}` : row.lora ?? "";
             name.classList.toggle("als-none", !row.lora);
+
+            dice.classList.toggle("als-active", row.random);
+            dice.title = row.random
+                ? "Random is on: a new strength between min and max (on the step grid) is rolled for every generation. Click to turn off."
+                : "Roll a random strength for every generation";
 
             endMin.textContent = row.labelMin || row.min.toFixed(dec);
             endMax.textContent = row.labelMax || row.max.toFixed(dec);
@@ -585,6 +611,7 @@ function createStack(node) {
         }
 
         sw.addEventListener("click", () => { row.on = !row.on; refresh(); updateHeader(); });
+        dice.addEventListener("click", () => { row.random = !row.random; refresh(); });
         name.addEventListener("click", () => {
             showLoraPicker(name, row.lora, (lora) => { row.lora = lora; refresh(); });
         });
@@ -676,18 +703,21 @@ function createStack(node) {
             }),
             field("Min label", "text", "labelMin", (i) => { row.labelMin = i.value; }),
             field("Max label", "text", "labelMax", (i) => { row.labelMax = i.value; }),
+            field("Title", "text", "title", (i) => { row.title = i.value.trim(); }),
         ];
+        fields.at(-1).input.placeholder = "Optional name shown instead of the file path";
 
         // Reflect corrections (e.g. min pushed up to max) back into the inputs.
         function syncInputs() {
             for (const f of fields) if (document.activeElement !== f.input) f.input.value = row[f.key];
         }
 
-        const line1 = el("div", "als-config-line");
-        const line2 = el("div", "als-config-line");
-        for (const f of fields.slice(0, 3)) line1.append(f.lab, f.input);
-        for (const f of fields.slice(3)) line2.append(f.lab, f.input);
-        config.append(line1, line2);
+        const lines = [fields.slice(5), fields.slice(0, 3), fields.slice(3, 5)].map((group) => {
+            const line = el("div", "als-config-line");
+            for (const f of group) line.append(f.lab, f.input);
+            return line;
+        });
+        config.append(...lines);
         return config;
     }
 
@@ -698,9 +728,23 @@ function createStack(node) {
         resizeNode();
     }
 
+    // Called once per queued generation, before the prompt is built, so the rolled values are
+    // what gets sent, shown on the sliders, and saved in the generated image's workflow.
+    function rollRandom() {
+        let changed = false;
+        for (const row of rows) {
+            if (row.on && row.random) {
+                row.strength = rollStrength(row);
+                changed = true;
+            }
+        }
+        if (changed) render();
+    }
+
     return {
         element: root,
         render,
+        rollRandom,
         totalHeight,
         getValue: () => ({ loras: rows.map((r) => ({ ...r })) }),
         setValue: (v) => {
@@ -728,7 +772,7 @@ app.registerExtension({
             const stack = createStack(this);
             this._alsStack = stack;
             const height = () => stack.totalHeight() + WIDGET_MARGIN * 2;
-            this.addDOMWidget(STACK_WIDGET, "anima_lora_stack", stack.element, {
+            const widget = this.addDOMWidget(STACK_WIDGET, "anima_lora_stack", stack.element, {
                 getValue: stack.getValue,
                 setValue: stack.setValue,
                 getMinHeight: height,
@@ -736,6 +780,7 @@ app.registerExtension({
                 getHeight: height,
                 margin: WIDGET_MARGIN,
             });
+            widget.beforeQueued = () => stack.rollRandom();
             stack.render();
             return r;
         };

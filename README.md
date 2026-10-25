@@ -24,9 +24,14 @@ The node appears as **Anima LoRA Slider Stack** under `loaders`.
 - **➕ Add LoRA** opens a searchable list of your `models/loras` files. Add as many as you like.
 - Each row has:
   - an **on/off switch**, and the **LoRA name** (click it to pick a different file)
-  - **⚙** opens the slider's settings: **Min**, **Max**, **Step**, **Min label** and **Max label**
-    (for a luminance LoRA you might use `Light` and `Dark`). Without labels, the ends show the
-    min/max numbers.
+  - **🎲 random**: when on, a new strength is rolled for every generation, anywhere between min
+    and max on the slider's step grid (see below)
+  - **⚙** opens the row's settings:
+    - **Title**: an optional name shown instead of the file path, e.g. `Lighting` for
+      `Ai\Stablediffusion\Sliders\12800_lighting_lora_slider_epoch5.safetensors`. Hover the
+      name to see the full path.
+    - **Min**, **Max**, **Step**, **Min label** and **Max label** for the slider (for a luminance
+      LoRA you might use `Dark` and `Light`). Without labels, the ends show the min/max numbers.
   - **▲ / ▼** to reorder rows (LoRAs are applied top to bottom), **✕** to remove a row
 - Using the slider:
   - drag it, or scroll over it to step by one **Step**
@@ -37,6 +42,17 @@ The node appears as **Anima LoRA Slider Stack** under `loaders`.
 - The slider's step grid is anchored at 0 whenever 0 is inside the range, so you can always
   drag exactly back to 0.
 - The same strength is applied to both model and clip.
+
+### Random strength
+
+With 🎲 on, the row turns amber and rolls a new strength each time you queue a generation,
+once per image when the batch count is above 1. The roll uses the same step grid as the slider,
+so with min `-1`, max `1` and step `0.25` you get one of `-1, -0.75, … 0.75, 1`. A roll of 0
+skips that LoRA for that image, just as a slider at 0 does.
+
+The slider shows the value used for the most recently queued generation. That value is also
+stored in the image's embedded prompt and workflow, so loading a generated image shows exactly
+what was used. Turn 🎲 off on the loaded workflow to keep that value.
 - **Toggle all** switches every row on or off at once.
 
 New rows start with min `-2`, max `2`, step `0.05` and strength `1`.

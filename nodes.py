@@ -80,6 +80,11 @@ def _to_float(value, default=None):
         return default
 
 
+def _describe(row):
+    title = str(row.get("title") or "").strip()
+    return f"{title} ({row['lora']})" if title else row["lora"]
+
+
 def _iter_rows(kwargs):
     """Yields the LoRA row dicts sent by the UI's stack widget, in display order."""
     stack = kwargs.get(STACK_INPUT)
@@ -93,9 +98,12 @@ class AnimaLoraSliderStack:
     """Applies any number of LoRAs to a model (and optionally clip), each with its own slider.
 
     The rows are built by the frontend and arrive in a single `lora_stack` input:
-        {"loras": [{"on": bool, "lora": str, "strength": float, "min": float, "max": float,
-                    "step": float, "labelMin": str, "labelMax": str}, ...]}
+        {"loras": [{"on": bool, "lora": str, "title": str, "strength": float, "random": bool,
+                    "min": float, "max": float, "step": float, "labelMin": str, "labelMax": str},
+                   ...]}
     A row is skipped when it is toggled off, has no LoRA picked, or its strength is 0.
+    `title` and the slider settings are display-only. With `random` on, the frontend rolls a new
+    `strength` before every queued generation, so the backend only ever sees a plain strength.
     """
 
     @classmethod
@@ -115,8 +123,9 @@ class AnimaLoraSliderStack:
     FUNCTION = "load_loras"
     CATEGORY = "loaders"
     DESCRIPTION = (
-        "Stack any number of LoRAs, each with a configurable slider (min, max, step and end "
-        "labels). LoRAs whose slider sits at 0 are not loaded."
+        "Stack any number of LoRAs, each with an optional title and a configurable slider (min, "
+        "max, step and end labels) that can roll a random value for every generation. LoRAs whose "
+        "slider sits at 0 are not loaded."
     )
 
     def __init__(self):
@@ -142,7 +151,7 @@ class AnimaLoraSliderStack:
 
             lora_name = get_lora_by_filename(row["lora"], lora_paths)
             if lora_name is None:
-                logging.warning(f"{LOG_PREFIX} LoRA not found, skipping: {row['lora']}")
+                logging.warning(f"{LOG_PREFIX} LoRA not found, skipping: {_describe(row)}")
                 continue
 
             lora_path = folder_paths.get_full_path("loras", lora_name)
